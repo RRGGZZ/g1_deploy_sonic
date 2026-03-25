@@ -1,0 +1,8 @@
+gear_sonic_deploy/deploy.sh
+gear_sonic_deploy/reference/convert_motions.py
+gear_sonic_deploy/reference/align_audio_to_motion.py
+gear_sonic_deploy/src/audio_thread/CMakeLists.txt
+gear_sonic_deploy/src/audio_thread/audio_thread.hpp
+gear_sonic_deploy/src/audio_thread/audio_thread.cpp
+gear_sonic_deploy/src/audio_thread/play_audio_debug.cpp
+gear_sonic_deploy/src/g1/g1_deploy_onnx_ref/src/g1_deploy_onnx_ref.cpp
