@@ -61,6 +61,7 @@
 #include <functional>
 #include <unordered_map>
 #include <fstream>
+#include <filesystem>
 #include <iostream>
 #include <chrono>
 #include <algorithm>
@@ -139,6 +140,63 @@
 using namespace unitree::common;
 using namespace unitree::robot;
 using namespace unitree_hg::msg::dds_;
+
+namespace {
+
+std::string ResolveMotionAudioDirectory(const std::string& motion_data_path,
+                                        const std::string& requested_audio_dir) {
+  namespace fs = std::filesystem;
+
+  auto normalize_path = [](const fs::path& path) {
+    std::error_code ec;
+    const fs::path weakly_canonical = fs::weakly_canonical(path, ec);
+    return ec ? path.lexically_normal() : weakly_canonical;
+  };
+  auto is_directory = [](const fs::path& path) {
+    std::error_code ec;
+    return !path.empty() && fs::exists(path, ec) && fs::is_directory(path, ec);
+  };
+
+  if (!requested_audio_dir.empty()) {
+    const fs::path explicit_dir = normalize_path(requested_audio_dir);
+    if (!is_directory(explicit_dir)) {
+      throw std::runtime_error("Motion audio directory does not exist: " +
+                               explicit_dir.string());
+    }
+    return explicit_dir.string();
+  }
+
+  const fs::path motion_data_dir = normalize_path(motion_data_path);
+  const fs::path motion_parent_dir = motion_data_dir.parent_path();
+  const std::vector<fs::path> candidates = {
+      motion_data_dir / "audio",
+      motion_data_dir / "audio_en",
+      motion_data_dir / "audio_aligned",
+      motion_data_dir / "audio_aligned_en",
+      motion_data_dir / "audio_16k",
+      motion_data_dir / "audio_16k_en",
+      motion_data_dir / "audio_aligned_16k",
+      motion_data_dir / "audio_aligned_16k_en",
+      motion_parent_dir / "audio",
+      motion_parent_dir / "audio_en",
+      motion_parent_dir / "audio_aligned",
+      motion_parent_dir / "audio_aligned_en",
+      motion_parent_dir / "audio_16k",
+      motion_parent_dir / "audio_16k_en",
+      motion_parent_dir / "audio_aligned_16k",
+      motion_parent_dir / "audio_aligned_16k_en",
+  };
+
+  for (const auto& candidate : candidates) {
+    if (is_directory(candidate)) {
+      return normalize_path(candidate).string();
+    }
+  }
+
+  return "";
+}
+
+}  // namespace
 
 
 
@@ -372,209 +430,6 @@ class G1Deploy {
     // VR5Point index
     std::array<int, 5> actual_vr_5point_index = {-1, -1, -1, -1, -1};
 
-    // Motion-switch smoothing state (safe transition when switching motions)
-    // Safety-first smoothing profile for real robot deployment.
-    // Keep transitions intentionally slow to avoid abrupt torque/pose jumps.
-    static constexpr double kMotionSwitchBlendDurationSec = 1.20;
-    struct MotionSwitchBlendState {
-      bool active = false;
-      std::shared_ptr<const MotionSequence> from_motion = nullptr;
-      int from_frame = 0;
-      std::chrono::steady_clock::time_point started_at{};
-      double duration_sec = kMotionSwitchBlendDurationSec;
-    };
-    MotionSwitchBlendState motion_switch_blend_;
-
-    // Continuous smoothing (applies every control cycle, not only during motion switch)
-    static constexpr double kContinuousRefSmoothingAlpha = 0.08;
-    static constexpr double kContinuousJointStepLimitRad = 0.015;
-    static constexpr double kContinuousJointVelStepLimit = 0.8;
-    static constexpr double kContinuousRootPosStepLimitM = 0.005;
-    uint64_t control_cycle_counter_ = 0;
-    uint64_t smoothing_last_cycle_ = 0;
-    bool continuous_smoothing_initialized_ = false;
-    std::shared_ptr<const MotionSequence> smoothing_motion_ = nullptr;
-    int smoothing_frame_ = 0;
-    std::array<double, 29> smoothed_joint_pos_{};
-    std::array<double, 29> smoothed_joint_vel_{};
-    std::array<double, 3> smoothed_root_pos_{};
-    std::array<double, 4> smoothed_root_quat_{{1.0, 0.0, 0.0, 0.0}};
-
-    void ResetMotionSwitchBlend() {
-      motion_switch_blend_.active = false;
-      motion_switch_blend_.from_motion.reset();
-      motion_switch_blend_.from_frame = 0;
-      motion_switch_blend_.duration_sec = kMotionSwitchBlendDurationSec;
-    }
-
-    void ResetContinuousSmoothing() {
-      continuous_smoothing_initialized_ = false;
-      smoothing_motion_.reset();
-      smoothing_frame_ = 0;
-      smoothing_last_cycle_ = 0;
-    }
-
-    int ClampFrameIndex(const std::shared_ptr<const MotionSequence>& motion, int frame) const {
-      if (!motion || motion->timesteps <= 0) {
-        return 0;
-      }
-      return std::clamp(frame, 0, static_cast<int>(motion->timesteps) - 1);
-    }
-
-    int ResolveTargetFrame(int frame_idx, int step_size) const {
-      int target_frame = static_cast<int>(current_frame_);
-      if (operator_state.play) {
-        target_frame += frame_idx * step_size;
-      }
-      return ClampFrameIndex(current_motion_, target_frame);
-    }
-
-    double GetMotionSwitchBlendAlpha() {
-      if (!motion_switch_blend_.active || !motion_switch_blend_.from_motion || !current_motion_) {
-        return 1.0;
-      }
-
-      const double duration = std::max(1e-3, motion_switch_blend_.duration_sec);
-      const double elapsed = std::chrono::duration<double>(
-          std::chrono::steady_clock::now() - motion_switch_blend_.started_at)
-          .count();
-      const double linear_alpha = std::clamp(elapsed / duration, 0.0, 1.0);
-
-      // Smoothstep easing gives softer start/end and reduces jerk.
-      const double smooth_alpha = linear_alpha * linear_alpha * (3.0 - 2.0 * linear_alpha);
-      if (linear_alpha >= 1.0) {
-        ResetMotionSwitchBlend();
-        return 1.0;
-      }
-      return smooth_alpha;
-    }
-
-    std::array<double, 4> SlerpQuaternionWxyz(
-        const std::array<double, 4>& q0,
-        const std::array<double, 4>& q1,
-        double alpha) const {
-      std::array<double, 4> a = q0;
-      std::array<double, 4> b = q1;
-
-      auto normalize = [](std::array<double, 4>& q) {
-        const double n = std::sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
-        if (n > 1e-9) {
-          q[0] /= n;
-          q[1] /= n;
-          q[2] /= n;
-          q[3] /= n;
-        }
-      };
-      normalize(a);
-      normalize(b);
-
-      double dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
-      if (dot < 0.0) {
-        b[0] = -b[0];
-        b[1] = -b[1];
-        b[2] = -b[2];
-        b[3] = -b[3];
-        dot = -dot;
-      }
-
-      dot = std::clamp(dot, -1.0, 1.0);
-      if (dot > 0.9995) {
-        std::array<double, 4> out{};
-        for (size_t i = 0; i < 4; ++i) {
-          out[i] = a[i] + alpha * (b[i] - a[i]);
-        }
-        normalize(out);
-        return out;
-      }
-
-      const double theta0 = std::acos(dot);
-      const double sin_theta0 = std::sin(theta0);
-      const double theta = theta0 * alpha;
-      const double s0 = std::sin(theta0 - theta) / sin_theta0;
-      const double s1 = std::sin(theta) / sin_theta0;
-
-      std::array<double, 4> out{};
-      for (size_t i = 0; i < 4; ++i) {
-        out[i] = s0 * a[i] + s1 * b[i];
-      }
-      normalize(out);
-      return out;
-    }
-
-    void StartMotionSwitchBlend(
-        const std::shared_ptr<const MotionSequence>& from_motion,
-        int from_frame,
-        const std::shared_ptr<const MotionSequence>& to_motion) {
-      if (!from_motion || !to_motion ||
-          from_motion->timesteps <= 0 || to_motion->timesteps <= 0) {
-        ResetMotionSwitchBlend();
-        return;
-      }
-
-      motion_switch_blend_.active = true;
-      motion_switch_blend_.from_motion = from_motion;
-      motion_switch_blend_.from_frame = ClampFrameIndex(from_motion, from_frame);
-      motion_switch_blend_.started_at = std::chrono::steady_clock::now();
-      motion_switch_blend_.duration_sec = kMotionSwitchBlendDurationSec;
-    }
-
-    static double ClampStep(double prev, double now, double max_step) {
-      return std::clamp(now, prev - max_step, prev + max_step);
-    }
-
-    void UpdateContinuousSmoothingCache() {
-      if (smoothing_last_cycle_ == control_cycle_counter_) {
-        return;
-      }
-      smoothing_last_cycle_ = control_cycle_counter_;
-
-      if (!current_motion_ || current_motion_->timesteps <= 0 || current_motion_->GetNumJoints() != 29 ||
-          current_motion_->GetNumBodies() <= 0 || current_motion_->GetNumBodyQuaternions() <= 0) {
-        ResetContinuousSmoothing();
-        return;
-      }
-
-      const int target_frame = ClampFrameIndex(current_motion_, current_frame_);
-      const auto jp = current_motion_->JointPositions(target_frame);
-      const auto jv = current_motion_->JointVelocities(target_frame);
-      const auto bp = current_motion_->BodyPositions(target_frame);
-      const auto bq = current_motion_->BodyQuaternions(target_frame);
-
-      const bool need_reinit = !continuous_smoothing_initialized_ || !operator_state.play ||
-                               (smoothing_motion_ != current_motion_) ||
-                               (std::abs(target_frame - smoothing_frame_) > 2);
-      if (need_reinit) {
-        for (size_t i = 0; i < 29; ++i) {
-          smoothed_joint_pos_[i] = jp[i];
-          smoothed_joint_vel_[i] = jv[i];
-        }
-        smoothed_root_pos_[0] = bp[0][0];
-        smoothed_root_pos_[1] = bp[0][1];
-        smoothed_root_pos_[2] = bp[0][2];
-        smoothed_root_quat_[0] = bq[0][0];
-        smoothed_root_quat_[1] = bq[0][1];
-        smoothed_root_quat_[2] = bq[0][2];
-        smoothed_root_quat_[3] = bq[0][3];
-        continuous_smoothing_initialized_ = true;
-      } else {
-        const double a = kContinuousRefSmoothingAlpha;
-        for (size_t i = 0; i < 29; ++i) {
-          const double raw_pos = ClampStep(smoothed_joint_pos_[i], jp[i], kContinuousJointStepLimitRad);
-          const double raw_vel = ClampStep(smoothed_joint_vel_[i], jv[i], kContinuousJointVelStepLimit);
-          smoothed_joint_pos_[i] = (1.0 - a) * smoothed_joint_pos_[i] + a * raw_pos;
-          smoothed_joint_vel_[i] = (1.0 - a) * smoothed_joint_vel_[i] + a * raw_vel;
-        }
-        for (size_t i = 0; i < 3; ++i) {
-          const double raw_pos = ClampStep(smoothed_root_pos_[i], bp[0][i], kContinuousRootPosStepLimitM);
-          smoothed_root_pos_[i] = (1.0 - a) * smoothed_root_pos_[i] + a * raw_pos;
-        }
-        smoothed_root_quat_ = SlerpQuaternionWxyz(smoothed_root_quat_, {bq[0][0], bq[0][1], bq[0][2], bq[0][3]}, a);
-      }
-
-      smoothing_motion_ = current_motion_;
-      smoothing_frame_ = target_frame;
-    }
-
     // =========================================================================
     // Motion-based observation gatherers
     // 
@@ -601,21 +456,18 @@ class G1Deploy {
       saved_frame_for_observation_window_ = std::max(saved_frame_for_observation_window_, (num_frames - 1) * step_size + 1);
       // Gather root z position from multiple future frames with step intervals
       for (int frame_idx = 0; frame_idx < num_frames; frame_idx++) {
-        const int target_frame = ResolveTargetFrame(frame_idx, step_size);
-        double motion_root_z_pos = current_motion_->BodyPositions(target_frame)[0][2];
-        if (frame_idx == 0 && continuous_smoothing_initialized_ && smoothing_motion_ == current_motion_) {
-          motion_root_z_pos = smoothed_root_pos_[2];
+        // Calculate target frame: if playing, advance through frames; if not playing, hold current frame
+        int target_frame = static_cast<int>(current_frame_);
+        if (operator_state.play) {
+          target_frame += frame_idx * step_size;
+          // If beyond motion length, clamp to last frame (hold final pose)
+          if (target_frame >= static_cast<int>(current_motion_->timesteps)) {
+            target_frame = static_cast<int>(current_motion_->timesteps) - 1;
+          }
         }
 
-        const double blend_alpha = GetMotionSwitchBlendAlpha();
-        if (blend_alpha < 1.0 && motion_switch_blend_.from_motion &&
-            motion_switch_blend_.from_motion->GetNumBodies() > 0) {
-          const int from_frame = ClampFrameIndex(motion_switch_blend_.from_motion, motion_switch_blend_.from_frame);
-          const double from_root_z_pos = motion_switch_blend_.from_motion->BodyPositions(from_frame)[0][2];
-          motion_root_z_pos = (1.0 - blend_alpha) * from_root_z_pos + blend_alpha * motion_root_z_pos;
-        }
-
-        target_buffer[offset + frame_idx] = motion_root_z_pos;
+        const auto motion_root_z_pos = current_motion_->BodyPositions(target_frame)[0][2];
+        target_buffer[offset + frame_idx * 1] = motion_root_z_pos;
       }
       return true;
     }
@@ -634,18 +486,17 @@ class G1Deploy {
       saved_frame_for_observation_window_ = std::max(saved_frame_for_observation_window_, (num_frames - 1) * step_size + 1);
       // Gather positions from multiple future frames with step intervals
       for (int frame_idx = 0; frame_idx < num_frames; frame_idx++) {
-        const int target_frame = ResolveTargetFrame(frame_idx, step_size);
+        // Calculate target frame: if playing, advance through frames; if not playing, hold current frame
+        int target_frame = static_cast<int>(current_frame_);
+        if (operator_state.play) {
+          target_frame += frame_idx * step_size;
+          // If beyond motion length, clamp to last frame (hold final pose)
+          if (target_frame >= static_cast<int>(current_motion_->timesteps)) {
+            target_frame = static_cast<int>(current_motion_->timesteps) - 1;
+          }
+        }
 
         const auto motion_body_pos = current_motion_->BodyPositions(target_frame);
-        const double blend_alpha = GetMotionSwitchBlendAlpha();
-        const bool can_blend_body = blend_alpha < 1.0 && motion_switch_blend_.from_motion &&
-                                    motion_switch_blend_.from_motion->GetNumBodies() == current_motion_->GetNumBodies();
-        const int from_frame = can_blend_body
-                                   ? ClampFrameIndex(motion_switch_blend_.from_motion, motion_switch_blend_.from_frame)
-                                   : 0;
-        const auto from_body_pos = can_blend_body
-                                       ? motion_switch_blend_.from_motion->BodyPositions(from_frame)
-                                       : motion_body_pos;
 
         // If body part indexes are empty, gather all bodies (all x, y, z coordinates)
         if (body_part_indexes.empty()) {
@@ -654,22 +505,9 @@ class G1Deploy {
           
           std::vector<double> all_body_pos(num_bodies * 3);
           for (size_t i = 0; i < num_bodies; i++) {
-            const double px = motion_body_pos[i][0];
-            const double py = motion_body_pos[i][1];
-            const double pz = motion_body_pos[i][2];
-            if (frame_idx == 0 && continuous_smoothing_initialized_ && smoothing_motion_ == current_motion_ && i == 0) {
-              all_body_pos[i * 3 + 0] = smoothed_root_pos_[0];
-              all_body_pos[i * 3 + 1] = smoothed_root_pos_[1];
-              all_body_pos[i * 3 + 2] = smoothed_root_pos_[2];
-            } else if (can_blend_body) {
-              all_body_pos[i * 3 + 0] = (1.0 - blend_alpha) * from_body_pos[i][0] + blend_alpha * px;
-              all_body_pos[i * 3 + 1] = (1.0 - blend_alpha) * from_body_pos[i][1] + blend_alpha * py;
-              all_body_pos[i * 3 + 2] = (1.0 - blend_alpha) * from_body_pos[i][2] + blend_alpha * pz;
-            } else {
-              all_body_pos[i * 3 + 0] = px;
-              all_body_pos[i * 3 + 1] = py;
-              all_body_pos[i * 3 + 2] = pz;
-            }
+            all_body_pos[i * 3 + 0] = motion_body_pos[i][0];  // x
+            all_body_pos[i * 3 + 1] = motion_body_pos[i][1];  // y
+            all_body_pos[i * 3 + 2] = motion_body_pos[i][2];  // z
           }
           std::copy(
             all_body_pos.begin(),
@@ -708,22 +546,9 @@ class G1Deploy {
               return false;
             }
             
-            const double px = motion_body_pos[storage_index][0];
-            const double py = motion_body_pos[storage_index][1];
-            const double pz = motion_body_pos[storage_index][2];
-            if (frame_idx == 0 && continuous_smoothing_initialized_ && smoothing_motion_ == current_motion_ && storage_index == 0) {
-              needed_body_pos[i * 3 + 0] = smoothed_root_pos_[0];
-              needed_body_pos[i * 3 + 1] = smoothed_root_pos_[1];
-              needed_body_pos[i * 3 + 2] = smoothed_root_pos_[2];
-            } else if (can_blend_body) {
-              needed_body_pos[i * 3 + 0] = (1.0 - blend_alpha) * from_body_pos[storage_index][0] + blend_alpha * px;
-              needed_body_pos[i * 3 + 1] = (1.0 - blend_alpha) * from_body_pos[storage_index][1] + blend_alpha * py;
-              needed_body_pos[i * 3 + 2] = (1.0 - blend_alpha) * from_body_pos[storage_index][2] + blend_alpha * pz;
-            } else {
-              needed_body_pos[i * 3 + 0] = px;
-              needed_body_pos[i * 3 + 1] = py;
-              needed_body_pos[i * 3 + 2] = pz;
-            }
+            needed_body_pos[i * 3 + 0] = motion_body_pos[storage_index][0];  // x
+            needed_body_pos[i * 3 + 1] = motion_body_pos[storage_index][1];  // y
+            needed_body_pos[i * 3 + 2] = motion_body_pos[storage_index][2];  // z
           }
           std::copy(
             needed_body_pos.begin(),
@@ -797,21 +622,19 @@ class G1Deploy {
       
       // Gather orientations from multiple future frames with step intervals
       for (int frame_idx = 0; frame_idx < num_frames; frame_idx++) {
-        const int target_frame = ResolveTargetFrame(frame_idx, step_size);
+        // Calculate target frame: if playing, advance through frames; if not playing, hold current frame
+        int target_frame = static_cast<int>(current_frame_);
+        if (operator_state.play) {
+          target_frame += frame_idx * step_size;
+          // If beyond motion length, clamp to last frame (hold final pose)
+          if (target_frame >= static_cast<int>(current_motion_->timesteps)) {
+            target_frame = static_cast<int>(current_motion_->timesteps) - 1;
+          }
+        }
         
         // Get reference data root rotation at this target frame (first body part, index 0)
         const auto motion_body_quat = current_motion_->BodyQuaternions(target_frame);
         std::array<double, 4> ref_data_root_rot_array = motion_body_quat[0];
-        const double blend_alpha = GetMotionSwitchBlendAlpha();
-        if (blend_alpha < 1.0 && motion_switch_blend_.from_motion &&
-            motion_switch_blend_.from_motion->GetNumBodyQuaternions() > 0) {
-          const int from_frame = ClampFrameIndex(motion_switch_blend_.from_motion, motion_switch_blend_.from_frame);
-          const auto from_quat = motion_switch_blend_.from_motion->BodyQuaternions(from_frame);
-          ref_data_root_rot_array = SlerpQuaternionWxyz(from_quat[0], ref_data_root_rot_array, blend_alpha);
-        }
-        if (frame_idx == 0 && continuous_smoothing_initialized_ && smoothing_motion_ == current_motion_) {
-          ref_data_root_rot_array = smoothed_root_quat_;
-        }
         
         // Calculate new reference root rotation with heading applied
         auto new_ref_root_rot = quat_mul_d(apply_delta_heading, ref_data_root_rot_array);
@@ -861,30 +684,24 @@ class G1Deploy {
       saved_frame_for_observation_window_ = std::max(saved_frame_for_observation_window_, (num_frames - 1) * step_size + 1);
       // Gather positions from multiple future frames with step intervals
       for (int frame_idx = 0; frame_idx < num_frames; frame_idx++) {
-        const int target_frame = ResolveTargetFrame(frame_idx, step_size);
-        const auto motion_joint_pos = current_motion_->JointPositions(target_frame);
-        std::array<double, 29> blended_joint_pos{};
-        for (size_t i = 0; i < 29; ++i) {
-          blended_joint_pos[i] = motion_joint_pos[i];
-        }
-        const double blend_alpha = GetMotionSwitchBlendAlpha();
-        if (blend_alpha < 1.0 && motion_switch_blend_.from_motion && motion_switch_blend_.from_motion->GetNumJoints() == 29) {
-          const int from_frame = ClampFrameIndex(motion_switch_blend_.from_motion, motion_switch_blend_.from_frame);
-          const auto from_joint_pos = motion_switch_blend_.from_motion->JointPositions(from_frame);
-          for (size_t i = 0; i < 29; ++i) {
-            blended_joint_pos[i] = (1.0 - blend_alpha) * from_joint_pos[i] + blend_alpha * blended_joint_pos[i];
+        // Calculate target frame: if playing, advance through frames; if not playing, hold current frame
+        int target_frame = static_cast<int>(current_frame_);
+        if (operator_state.play) {
+          target_frame += frame_idx * step_size;
+          // If beyond motion length, clamp to last frame (hold final pose)
+          if (target_frame >= static_cast<int>(current_motion_->timesteps)) {
+            target_frame = static_cast<int>(current_motion_->timesteps) - 1;
           }
         }
-        if (frame_idx == 0 && continuous_smoothing_initialized_ && smoothing_motion_ == current_motion_) {
-          blended_joint_pos = smoothed_joint_pos_;
-        }
+
+        const auto motion_joint_pos = current_motion_->JointPositions(target_frame);
 
         // If body part indexes are empty, gather all joints
         if (joint_indexes.empty()) {
           size_t frame_offset = offset + frame_idx * 29;  // 29 joints per frame
           std::copy(
-            blended_joint_pos.begin(),
-            blended_joint_pos.begin() + num_joints,
+            motion_joint_pos,
+            motion_joint_pos + num_joints,
             target_buffer.begin() + frame_offset
           );
           
@@ -892,7 +709,7 @@ class G1Deploy {
           if (has_upper_body_data_) {
             std::array<double, 29> current_motion_joint_pos;
             for (size_t i = 0; i < 29; i++) {
-              current_motion_joint_pos[i] = blended_joint_pos[i];
+              current_motion_joint_pos[i] = motion_joint_pos[i];
             }
             for (size_t i = 0; i < 17; i++) {
               current_motion_joint_pos[upper_body_joint_isaaclab_order_in_isaaclab_index[i]] = upper_body_joint_positions_buffer_[i];
@@ -910,7 +727,7 @@ class G1Deploy {
           std::vector<double> needed_joints_pos(joint_indexes.size());
           for (size_t i = 0; i < joint_indexes.size(); i++) {
             size_t body_part_index = joint_indexes[i];
-            needed_joints_pos[i] = blended_joint_pos[body_part_index];
+            needed_joints_pos[i] = motion_joint_pos[body_part_index];
           }
           std::copy(
             needed_joints_pos.begin(),
@@ -946,39 +763,30 @@ class G1Deploy {
       saved_frame_for_observation_window_ = std::max(saved_frame_for_observation_window_, (num_frames - 1) * step_size + 1);
       // Gather velocities from multiple future frames with step intervals
       for (int frame_idx = 0; frame_idx < num_frames; frame_idx++) {
-        const int target_frame = ResolveTargetFrame(frame_idx, step_size);
+        // Calculate frame index (current frame + frame_idx * step_size for future frames)
+        int target_frame = static_cast<int>(current_frame_) + frame_idx * step_size;
+        
+        // If beyond motion length, clamp to last frame (hold final pose)
+        if (target_frame >= static_cast<int>(current_motion_->timesteps)) {
+          target_frame = static_cast<int>(current_motion_->timesteps) - 1;
+        }
         
         const auto motion_joint_vel = current_motion_->JointVelocities(target_frame);
-        std::array<double, 29> blended_joint_vel{};
-        for (size_t i = 0; i < 29; ++i) {
-          blended_joint_vel[i] = motion_joint_vel[i];
-        }
-        const double blend_alpha = GetMotionSwitchBlendAlpha();
-        if (blend_alpha < 1.0 && motion_switch_blend_.from_motion && motion_switch_blend_.from_motion->GetNumJoints() == 29) {
-          const int from_frame = ClampFrameIndex(motion_switch_blend_.from_motion, motion_switch_blend_.from_frame);
-          const auto from_joint_vel = motion_switch_blend_.from_motion->JointVelocities(from_frame);
-          for (size_t i = 0; i < 29; ++i) {
-            blended_joint_vel[i] = (1.0 - blend_alpha) * from_joint_vel[i] + blend_alpha * blended_joint_vel[i];
-          }
-        }
-        if (frame_idx == 0 && continuous_smoothing_initialized_ && smoothing_motion_ == current_motion_) {
-          blended_joint_vel = smoothed_joint_vel_;
-        }
 
         // If body part indexes are empty, gather all joints
         if (joint_indexes.empty()) {
           size_t frame_offset = offset + frame_idx * 29;  // 29 joints per frame
           if (operator_state.play) {
             std::copy(
-              blended_joint_vel.begin(),
-              blended_joint_vel.begin() + num_joints,
+              motion_joint_vel,
+              motion_joint_vel + num_joints,
               target_buffer.begin() + frame_offset
             );
             // If upper body control is enabled, use upper body joint velocities in buffer to replace the motion_joint_vel
             if (has_upper_body_data_) {
               std::array<double, 29> current_motion_joint_vel;
               for (size_t i = 0; i < 29; i++) {
-                current_motion_joint_vel[i] = blended_joint_vel[i];
+                current_motion_joint_vel[i] = motion_joint_vel[i];
               }
               for (size_t i = 0; i < 17; i++) {
                 current_motion_joint_vel[upper_body_joint_isaaclab_order_in_isaaclab_index[i]] = upper_body_joint_velocities_buffer_[i];
@@ -1003,7 +811,7 @@ class G1Deploy {
             std::vector<double> needed_joints_vel(joint_indexes.size());
             for (size_t i = 0; i < joint_indexes.size(); i++) {
               size_t body_part_index = joint_indexes[i];
-              needed_joints_vel[i] = blended_joint_vel[body_part_index];
+              needed_joints_vel[i] = motion_joint_vel[body_part_index];
             }
             std::copy(
               needed_joints_vel.begin(),
@@ -2259,7 +2067,8 @@ class G1Deploy {
       std::string zmq_out_topic = "g1_debug",
       bool enable_motion_recording = false,
       std::array<double, 3> initial_compliance = {0.05, 0.05, 0.0},
-      double initial_max_close_ratio = 1.0)
+      double initial_max_close_ratio = 1.0,
+      std::string motion_audio_dir = "")
       : time_(0.0),
         publish_dt_(0.002),
         control_dt_(0.02),
@@ -2287,7 +2096,17 @@ class G1Deploy {
       // Initialize Dex3 hands (ChannelFactory already initialized above)
       dex3_hands_.initialize("");
 
-      audio_thread_ = std::make_unique<AudioThread>();
+      const auto resolved_motion_audio_dir =
+          ResolveMotionAudioDirectory(motion_data_path, motion_audio_dir);
+      if (!resolved_motion_audio_dir.empty()) {
+        std::cout << "Motion-synced audio enabled from: "
+                  << resolved_motion_audio_dir << std::endl;
+      } else {
+        std::cout << "Motion-synced audio disabled (no audio directory found)."
+                  << std::endl;
+      }
+      audio_thread_ =
+          std::make_unique<AudioThread>(resolved_motion_audio_dir);
 
       if(!target_motion_file_path.empty())
       {
@@ -2969,9 +2788,6 @@ class G1Deploy {
      *    initial_encoder_mode_ (-1 = stop, 0+ = fall back to local encoder).
      */
     bool GatherInputInterfaceData() {
-      ++control_cycle_counter_;
-      UpdateContinuousSmoothingCache();
-
       // Snapshot input interface data into buffers before gathering observations
       // This ensures observations, logging, and output all use the same data
       // some of the data will be overwritten by the motion dataset if we are not using the buffered interface data
@@ -2994,9 +2810,26 @@ class G1Deploy {
         streaming_data_absent_debouncer_.update(streaming_data_absent);
       }
       
+      std::string current_motion_name;
+      int current_frame = 0;
+      bool motion_audio_enabled = false;
+      {
+        std::lock_guard<std::mutex> lock(current_motion_mutex_);
+        if (current_motion_) {
+          current_motion_name = current_motion_->name;
+          current_frame = current_frame_;
+          motion_audio_enabled =
+              current_motion_ != planner_motion_ &&
+              current_motion_->name != "streamed";
+        }
+      }
       audio_thread_->SetCommand(
         AudioCommand{
           .streaming_data_absent = streaming_data_absent_debouncer_.state(),
+          .motion_audio_enabled = motion_audio_enabled,
+          .motion_playing = operator_state.play,
+          .current_frame = current_frame,
+          .motion_name = current_motion_name,
         });
 
       // if encoder mode is not -2, we need to get the token state data either from the encoder or the external token state
@@ -3269,8 +3102,6 @@ class G1Deploy {
         // Check if motion completed (reached the end)
         if (current_motion_->name != "streamed") {
           if (current_frame_ >= current_motion_->timesteps) {
-            const int from_frame = std::max(0, current_motion_->timesteps - 1);
-            StartMotionSwitchBlend(current_motion_, from_frame, current_motion_);
             operator_state.play = false;
             std::cout << "Motion " << current_motion_->name << " completed." << std::endl;
             current_frame_ = 0; // Reset to beginning
@@ -3339,14 +3170,6 @@ class G1Deploy {
     
      
       bool has_planner = static_cast<bool>(planner_);
-
-      std::shared_ptr<const MotionSequence> motion_before_input;
-      int frame_before_input = 0;
-      {
-        std::lock_guard<std::mutex> lock(current_motion_mutex_);
-        motion_before_input = current_motion_;
-        frame_before_input = current_frame_;
-      }
       
       if (has_planner) {
         input_interface_->handle_input(motion_reader_, current_motion_, current_frame_, operator_state, 
@@ -3355,29 +3178,6 @@ class G1Deploy {
         PlannerState planner_state{false, false};
         input_interface_->handle_input(motion_reader_, current_motion_, current_frame_, operator_state, 
                                       reinitialize_heading_, heading_state_buffer_, has_planner, planner_state, movement_state_buffer_, current_motion_mutex_);
-      }
-
-      std::shared_ptr<const MotionSequence> motion_after_input;
-      int frame_after_input = 0;
-      {
-        std::lock_guard<std::mutex> lock(current_motion_mutex_);
-        motion_after_input = current_motion_;
-        frame_after_input = current_frame_;
-      }
-      if (motion_before_input && motion_after_input) {
-        const bool planner_involved =
-            (planner_motion_ && (motion_before_input == planner_motion_ || motion_after_input == planner_motion_));
-        if (planner_involved) {
-          ResetMotionSwitchBlend();
-        } else if (motion_before_input != motion_after_input) {
-          StartMotionSwitchBlend(motion_before_input, frame_before_input, motion_after_input);
-        } else {
-          // Handle in-motion rewind/reset (e.g. R key) as a smooth transition too.
-          const bool rewound = frame_after_input + 2 < frame_before_input;
-          if (rewound) {
-            StartMotionSwitchBlend(motion_before_input, frame_before_input, motion_after_input);
-          }
-        }
       }
 
       if (playback_input_file_ && program_state_ == ProgramState::CONTROL) {
@@ -3423,14 +3223,7 @@ class G1Deploy {
 
           if(!(has_planner && planner_state.enabled && planner_state.initialized)) {
             std::lock_guard<std::mutex> lock(current_motion_mutex_);
-            const auto previous_motion = current_motion_;
-            const int previous_frame = current_frame_;
             current_motion_ = motion_reader_.GetMotionShared(motion_reader_.current_motion_index_);
-            if (previous_motion && current_motion_ && previous_motion != current_motion_) {
-              StartMotionSwitchBlend(previous_motion, previous_frame, current_motion_);
-            } else {
-              ResetMotionSwitchBlend();
-            }
           }
         }
       }
@@ -3968,6 +3761,7 @@ int main(int argc, char const* argv[]) {
     std::cout << "  --target-motion-logfile <path>: write target motion to a csv file if provided" << std::endl;
     std::cout << "  --planner-motion-logfile <path>: write planner motion to a csv file if provided" << std::endl;
     std::cout << "  --policy-input-logfile <path>: write policy input tensors to a csv file if provided" << std::endl;
+    std::cout << "  --motion-audio-dir <path>: play matching WAV files on the robot speaker during reference motions" << std::endl;
     std::cout << "  --disable-crc-check: disable CRC validation for MuJoCo simulation" << std::endl;
     std::cout << "  --obs-config <path>: specify observation configuration YAML file" << std::endl;
     std::cout << "  --encoder-file <path>: specify encoder ONNX file (optional)" << std::endl;
@@ -4008,7 +3802,7 @@ int main(int argc, char const* argv[]) {
   std::string plannerFile = "";
 
   // Parse optional arguments
-  bool disableCrcCheck = false;\
+  bool disableCrcCheck = false;
   std::string obsConfigPath = "";
   std::string encoderFile = "";
   std::string targetMotionLogfile = "";
@@ -4030,6 +3824,7 @@ int main(int argc, char const* argv[]) {
   bool enableMotionRecording = false;  // default off; enable with --enable-motion-recording
   int zmq_out_port = 5557;
   std::string zmq_out_topic = "g1_debug";
+  std::string motionAudioDir = "";
   std::array<double, 3> initial_compliance = {0.5, 0.5, 0.0}; // initial compliance is 0.5 for both hands (keyboard controllable)
   double initial_max_close_ratio = 1.0; // default allows full closure, use --max-close-ratio to limit
   for (int i = 4; i < argc; i++) {
@@ -4080,6 +3875,18 @@ int main(int argc, char const* argv[]) {
         policyInputLogfile = argv[i + 1];
         std::cout << "[INFO] Using policy input logfile: " << policyInputLogfile << std::endl;
         i++; // Skip the next argument since it's the policy input logfile
+      }
+    } else if (std::string(argv[i]) == "--motion-audio-dir" ||
+               std::string(argv[i]) == "--motion-audio") {
+      if (i + 1 < argc) {
+        motionAudioDir = argv[i + 1];
+        std::cout << "[INFO] Using motion audio directory: " << motionAudioDir
+                  << std::endl;
+        i++;
+      } else {
+        std::cerr << "Error: --motion-audio-dir requires a path argument"
+                  << std::endl;
+        exit(1);
       }
     } else if (std::string(argv[i]) == "--input-type") {
       if (i + 1 < argc) {
@@ -4293,7 +4100,8 @@ int main(int argc, char const* argv[]) {
     zmq_out_topic,
     enableMotionRecording,
     initial_compliance,
-    initial_max_close_ratio
+    initial_max_close_ratio,
+    motionAudioDir
   );
   std::cout << "[DEBUG] G1Deploy object created successfully!" << std::endl;
   

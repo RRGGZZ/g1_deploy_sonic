@@ -1,0 +1,156 @@
+G1 Motion Capture Data Summary
+========================================
+
+Total motion sequences: 15
+
+Detailed motion list:
+  case_test1:
+    Output dir: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio/g1_ref_en/case_test1
+    Timesteps: 397
+    Joints: 29
+    Body parts: 1
+    Source format: scalelab_gmr
+    Source FPS: 30.0
+    Target FPS: 50.0
+    Body indexes: [0]
+
+  case_test10:
+    Output dir: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio/g1_ref_en/case_test10
+    Timesteps: 957
+    Joints: 29
+    Body parts: 1
+    Source format: scalelab_gmr
+    Source FPS: 30.0
+    Target FPS: 50.0
+    Body indexes: [0]
+
+  case_test11:
+    Output dir: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio/g1_ref_en/case_test11
+    Timesteps: 211
+    Joints: 29
+    Body parts: 1
+    Source format: scalelab_gmr
+    Source FPS: 30.0
+    Target FPS: 50.0
+    Body indexes: [0]
+
+  case_test12:
+    Output dir: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio/g1_ref_en/case_test12
+    Timesteps: 211
+    Joints: 29
+    Body parts: 1
+    Source format: scalelab_gmr
+    Source FPS: 30.0
+    Target FPS: 50.0
+    Body indexes: [0]
+
+  case_test13:
+    Output dir: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio/g1_ref_en/case_test13
+    Timesteps: 397
+    Joints: 29
+    Body parts: 1
+    Source format: scalelab_gmr
+    Source FPS: 30.0
+    Target FPS: 50.0
+    Body indexes: [0]
+
+  case_test14:
+    Output dir: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio/g1_ref_en/case_test14
+    Timesteps: 397
+    Joints: 29
+    Body parts: 1
+    Source format: scalelab_gmr
+    Source FPS: 30.0
+    Target FPS: 50.0
+    Body indexes: [0]
+
+  case_test15:
+    Output dir: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio/g1_ref_en/case_test15
+    Timesteps: 771
+    Joints: 29
+    Body parts: 1
+    Source format: scalelab_gmr
+    Source FPS: 30.0
+    Target FPS: 50.0
+    Body indexes: [0]
+
+  case_test2:
+    Output dir: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio/g1_ref_en/case_test2
+    Timesteps: 211
+    Joints: 29
+    Body parts: 1
+    Source format: scalelab_gmr
+    Source FPS: 30.0
+    Target FPS: 50.0
+    Body indexes: [0]
+
+  case_test3:
+    Output dir: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio/g1_ref_en/case_test3
+    Timesteps: 584
+    Joints: 29
+    Body parts: 1
+    Source format: scalelab_gmr
+    Source FPS: 30.0
+    Target FPS: 50.0
+    Body indexes: [0]
+
+  case_test4:
+    Output dir: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio/g1_ref_en/case_test4
+    Timesteps: 771
+    Joints: 29
+    Body parts: 1
+    Source format: scalelab_gmr
+    Source FPS: 30.0
+    Target FPS: 50.0
+    Body indexes: [0]
+
+  case_test5:
+    Output dir: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio/g1_ref_en/case_test5
+    Timesteps: 397
+    Joints: 29
+    Body parts: 1
+    Source format: scalelab_gmr
+    Source FPS: 30.0
+    Target FPS: 50.0
+    Body indexes: [0]
+
+  case_test6:
+    Output dir: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio/g1_ref_en/case_test6
+    Timesteps: 397
+    Joints: 29
+    Body parts: 1
+    Source format: scalelab_gmr
+    Source FPS: 30.0
+    Target FPS: 50.0
+    Body indexes: [0]
+
+  case_test7:
+    Output dir: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio/g1_ref_en/case_test7
+    Timesteps: 771
+    Joints: 29
+    Body parts: 1
+    Source format: scalelab_gmr
+    Source FPS: 30.0
+    Target FPS: 50.0
+    Body indexes: [0]
+
+  case_test8:
+    Output dir: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio/g1_ref_en/case_test8
+    Timesteps: 211
+    Joints: 29
+    Body parts: 1
+    Source format: scalelab_gmr
+    Source FPS: 30.0
+    Target FPS: 50.0
+    Body indexes: [0]
+
+  case_test9:
+    Output dir: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio/g1_ref_en/case_test9
+    Timesteps: 584
+    Joints: 29
+    Body parts: 1
+    Source format: scalelab_gmr
+    Source FPS: 30.0
+    Target FPS: 50.0
+    Body indexes: [0]
+

@@ -1,0 +1,15 @@
+Metadata for: case_test05
+==============================
+
+Body part indexes:
+[0]
+
+Total timesteps: 399
+
+Data arrays summary:
+  joint_pos: (399, 29) (float64)
+  joint_vel: (399, 29) (float64)
+  body_pos_w: (399, 1, 3) (float64)
+  body_quat_w: (399, 1, 4) (float64)
+  body_lin_vel_w: (399, 1, 3) (float64)
+  body_ang_vel_w: (399, 1, 3) (float64)

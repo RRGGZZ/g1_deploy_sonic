@@ -1,0 +1,15 @@
+Metadata for: case_test07
+==============================
+
+Body part indexes:
+[0]
+
+Total timesteps: 772
+
+Data arrays summary:
+  joint_pos: (772, 29) (float64)
+  joint_vel: (772, 29) (float64)
+  body_pos_w: (772, 1, 3) (float64)
+  body_quat_w: (772, 1, 4) (float64)
+  body_lin_vel_w: (772, 1, 3) (float64)
+  body_ang_vel_w: (772, 1, 3) (float64)

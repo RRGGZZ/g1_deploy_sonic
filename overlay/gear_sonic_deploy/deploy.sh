@@ -503,7 +503,12 @@ set -e  # Re-enable exit on error
 
 # Always build to ensure we have the latest version
 echo "Building the project..."
-just build
+if command -v just >/dev/null 2>&1; then
+    just build
+else
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+    cmake --build build -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
+fi
 
 echo ""
 
@@ -538,7 +543,21 @@ echo -e "${CYAN}═════════════════════�
 echo ""
 echo -e "${YELLOW}The following command will be executed:${NC}"
 echo ""
-echo -e "${BLUE}just run g1_deploy_onnx_ref $TARGET $CHECKPOINT_DECODER $MOTION_DATA \\${NC}"
+if command -v just >/dev/null 2>&1; then
+    RUNNER_DISPLAY="just run g1_deploy_onnx_ref"
+else
+    RUNNER_DISPLAY="./target/release/g1_deploy_onnx_ref"
+fi
+
+run_g1_deploy() {
+    if command -v just >/dev/null 2>&1; then
+        just run g1_deploy_onnx_ref "$@"
+    else
+        ./target/release/g1_deploy_onnx_ref "$@"
+    fi
+}
+
+echo -e "${BLUE}$RUNNER_DISPLAY $TARGET $CHECKPOINT_DECODER $MOTION_DATA \\${NC}"
 echo -e "${BLUE}    --obs-config $OBS_CONFIG \\${NC}"
 echo -e "${BLUE}    --encoder-file $CHECKPOINT_ENCODER \\${NC}"
 echo -e "${BLUE}    --planner-file $PLANNER \\${NC}"
@@ -574,7 +593,7 @@ if [[ "$confirm" =~ ^[Yy]$ ]] || [[ -z "$confirm" ]]; then
     # Build the command with optional extra args
     if [[ -n "$EXTRA_ARGS" ]]; then
         if [[ -n "$MOTION_AUDIO" ]]; then
-            just run g1_deploy_onnx_ref "$TARGET" "$CHECKPOINT_DECODER" "$MOTION_DATA" \
+            run_g1_deploy "$TARGET" "$CHECKPOINT_DECODER" "$MOTION_DATA" \
                 --obs-config "$OBS_CONFIG" \
                 --encoder-file "$CHECKPOINT_ENCODER" \
                 --planner-file "$PLANNER" \
@@ -584,7 +603,7 @@ if [[ "$confirm" =~ ^[Yy]$ ]] || [[ -z "$confirm" ]]; then
                 --zmq-host "$ZMQ_HOST" \
                 $EXTRA_ARGS
         else
-            just run g1_deploy_onnx_ref "$TARGET" "$CHECKPOINT_DECODER" "$MOTION_DATA" \
+            run_g1_deploy "$TARGET" "$CHECKPOINT_DECODER" "$MOTION_DATA" \
                 --obs-config "$OBS_CONFIG" \
                 --encoder-file "$CHECKPOINT_ENCODER" \
                 --planner-file "$PLANNER" \
@@ -595,7 +614,7 @@ if [[ "$confirm" =~ ^[Yy]$ ]] || [[ -z "$confirm" ]]; then
         fi
     else
         if [[ -n "$MOTION_AUDIO" ]]; then
-            just run g1_deploy_onnx_ref "$TARGET" "$CHECKPOINT_DECODER" "$MOTION_DATA" \
+            run_g1_deploy "$TARGET" "$CHECKPOINT_DECODER" "$MOTION_DATA" \
                 --obs-config "$OBS_CONFIG" \
                 --encoder-file "$CHECKPOINT_ENCODER" \
                 --planner-file "$PLANNER" \
@@ -604,7 +623,7 @@ if [[ "$confirm" =~ ^[Yy]$ ]] || [[ -z "$confirm" ]]; then
                 --motion-audio-dir "$MOTION_AUDIO" \
                 --zmq-host "$ZMQ_HOST"
         else
-            just run g1_deploy_onnx_ref "$TARGET" "$CHECKPOINT_DECODER" "$MOTION_DATA" \
+            run_g1_deploy "$TARGET" "$CHECKPOINT_DECODER" "$MOTION_DATA" \
                 --obs-config "$OBS_CONFIG" \
                 --encoder-file "$CHECKPOINT_ENCODER" \
                 --planner-file "$PLANNER" \
