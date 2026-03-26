@@ -458,6 +458,20 @@ class G1Deploy {
     std::array<double, 3> smoothed_root_pos_{};
     std::array<double, 4> smoothed_root_quat_{{1.0, 0.0, 0.0, 0.0}};
 
+    // Stand-pose transition state:
+    // default stand -> motion frame 0 -> motion playback -> default stand.
+    static constexpr double kStandTransitionDurationSec = 1.00;
+    enum class StandTransitionPhase { NONE, TO_MOTION_START, TO_DEFAULT_STAND };
+    struct StandTransitionState {
+      StandTransitionPhase phase = StandTransitionPhase::NONE;
+      std::shared_ptr<const MotionSequence> motion = nullptr;
+      int frozen_frame = 0;
+      std::array<double, G1_NUM_MOTOR> start_q_target = default_angles;
+      std::chrono::steady_clock::time_point started_at{};
+      double duration_sec = kStandTransitionDurationSec;
+    };
+    StandTransitionState stand_transition_;
+
     void ResetMotionSwitchBlend() {
       motion_switch_blend_.active = false;
       motion_switch_blend_.from_motion.reset();
@@ -470,6 +484,84 @@ class G1Deploy {
       smoothing_motion_.reset();
       smoothing_frame_ = 0;
       smoothing_last_cycle_ = 0;
+    }
+
+    bool IsReferencePlaybackMotion(const std::shared_ptr<const MotionSequence>& motion) const {
+      return motion && motion != planner_motion_ && motion->name != "streamed";
+    }
+
+    std::array<double, G1_NUM_MOTOR> GetMeasuredJointPositionsOrDefault() const {
+      std::array<double, G1_NUM_MOTOR> joint_positions = default_angles;
+      const auto low_state_data = low_state_buffer_.GetDataWithTime();
+      const std::shared_ptr<const LowState_> ls = low_state_data.data;
+      if (!ls) {
+        return joint_positions;
+      }
+      for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+        joint_positions[i] = ls->motor_state()[i].q();
+      }
+      return joint_positions;
+    }
+
+    double EaseInOutAlpha(double alpha) const {
+      const double clamped = std::clamp(alpha, 0.0, 1.0);
+      return clamped * clamped * (3.0 - 2.0 * clamped);
+    }
+
+    void ResetStandTransition() {
+      stand_transition_.phase = StandTransitionPhase::NONE;
+      stand_transition_.motion.reset();
+      stand_transition_.frozen_frame = 0;
+      stand_transition_.start_q_target = default_angles;
+      stand_transition_.duration_sec = kStandTransitionDurationSec;
+      stand_transition_.started_at = std::chrono::steady_clock::time_point{};
+    }
+
+    bool HasActiveStandTransition() const {
+      return stand_transition_.phase != StandTransitionPhase::NONE;
+    }
+
+    double GetStandTransitionAlpha() const {
+      if (!HasActiveStandTransition()) {
+        return 1.0;
+      }
+      const double duration = std::max(1e-3, stand_transition_.duration_sec);
+      const double elapsed = std::chrono::duration<double>(
+          std::chrono::steady_clock::now() - stand_transition_.started_at)
+          .count();
+      return EaseInOutAlpha(elapsed / duration);
+    }
+
+    bool IsStandTransitionComplete() const {
+      return HasActiveStandTransition() && GetStandTransitionAlpha() >= 1.0 - 1e-6;
+    }
+
+    void StartStandTransitionToMotionStart(const std::shared_ptr<const MotionSequence>& motion) {
+      if (!IsReferencePlaybackMotion(motion) || motion->timesteps <= 0) {
+        ResetStandTransition();
+        return;
+      }
+
+      stand_transition_.phase = StandTransitionPhase::TO_MOTION_START;
+      stand_transition_.motion = motion;
+      stand_transition_.frozen_frame = 0;
+      stand_transition_.start_q_target = GetMeasuredJointPositionsOrDefault();
+      stand_transition_.started_at = std::chrono::steady_clock::now();
+      stand_transition_.duration_sec = kStandTransitionDurationSec;
+    }
+
+    void StartStandTransitionToDefault(const std::shared_ptr<const MotionSequence>& motion, int frame) {
+      if (!IsReferencePlaybackMotion(motion) || motion->timesteps <= 0) {
+        ResetStandTransition();
+        return;
+      }
+
+      stand_transition_.phase = StandTransitionPhase::TO_DEFAULT_STAND;
+      stand_transition_.motion = motion;
+      stand_transition_.frozen_frame = ClampFrameIndex(motion, frame);
+      stand_transition_.start_q_target = GetMeasuredJointPositionsOrDefault();
+      stand_transition_.started_at = std::chrono::steady_clock::now();
+      stand_transition_.duration_sec = kStandTransitionDurationSec;
     }
 
     int ClampFrameIndex(const std::shared_ptr<const MotionSequence>& motion, int frame) const {
@@ -3167,6 +3259,32 @@ class G1Deploy {
         motor_command_tmp.kd.at(i) = kds[i];
         motor_command_tmp.dq_target.at(i) = 0.0;
       }
+
+      const bool use_reference_stand_transition = IsReferencePlaybackMotion(current_motion_);
+      if (use_reference_stand_transition) {
+        if (stand_transition_.phase == StandTransitionPhase::TO_MOTION_START &&
+            stand_transition_.motion == current_motion_) {
+          const double alpha = GetStandTransitionAlpha();
+          for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+            const double q_start = stand_transition_.start_q_target[i];
+            const double q_end = static_cast<double>(motor_command_tmp.q_target.at(i));
+            motor_command_tmp.q_target.at(i) = static_cast<float>((1.0 - alpha) * q_start + alpha * q_end);
+          }
+        } else if (stand_transition_.phase == StandTransitionPhase::TO_DEFAULT_STAND &&
+                   stand_transition_.motion == current_motion_) {
+          const double alpha = GetStandTransitionAlpha();
+          for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+            const double q_start = stand_transition_.start_q_target[i];
+            motor_command_tmp.q_target.at(i) =
+                static_cast<float>((1.0 - alpha) * q_start + alpha * default_angles[i]);
+          }
+        } else if (!operator_state.play) {
+          for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+            motor_command_tmp.q_target.at(i) = static_cast<float>(default_angles[i]);
+          }
+        }
+      }
+
       motor_command_buffer_.SetData(motor_command_tmp);
       return true;
     }
@@ -3189,6 +3307,31 @@ class G1Deploy {
     bool CurrentFrameAdvancement() {
       // get current motion and frame from planner when planner is enabled and initialized
       std::lock_guard<std::mutex> motion_lock(current_motion_mutex_);
+      if (HasActiveStandTransition()) {
+        if (stand_transition_.phase == StandTransitionPhase::TO_MOTION_START &&
+            stand_transition_.motion == current_motion_) {
+          current_frame_ = 0;
+          if (IsStandTransitionComplete()) {
+            ResetStandTransition();
+          }
+          return true;
+        }
+
+        if (stand_transition_.phase == StandTransitionPhase::TO_DEFAULT_STAND &&
+            stand_transition_.motion == current_motion_) {
+          current_frame_ = stand_transition_.frozen_frame;
+          if (IsStandTransitionComplete()) {
+            current_frame_ = 0;
+            ResetStandTransition();
+            reinitialize_heading_ = true;
+            std::cout << "Returned to default standing pose." << std::endl;
+          }
+          return true;
+        }
+
+        ResetStandTransition();
+      }
+
       if (planner_ && planner_->planner_state_.enabled && planner_->planner_state_.initialized) {
         std::lock_guard<std::mutex> planner_lock(planner_->planner_motion_mutex_);
         
@@ -3356,12 +3499,12 @@ class G1Deploy {
           if (current_frame_ >= current_motion_->timesteps) {
             const int from_frame = std::max(0, current_motion_->timesteps - 1);
             StartMotionSwitchBlend(current_motion_, from_frame, current_motion_);
+            StartStandTransitionToDefault(current_motion_, from_frame);
             operator_state.play = false;
             std::cout << "Motion " << current_motion_->name << " completed." << std::endl;
-            current_frame_ = 0; // Reset to beginning
+            current_frame_ = from_frame;
             // Total reset: both base quaternion and delta heading
-            reinitialize_heading_ = true;
-            std::cout << "Reset to frame 0." << std::endl;
+            std::cout << "Interpolating back to default standing pose." << std::endl;
           }
         } else {
           if (current_frame_ >= current_motion_->timesteps - saved_frame_for_observation_window_) {
@@ -3427,6 +3570,7 @@ class G1Deploy {
 
       std::shared_ptr<const MotionSequence> motion_before_input;
       int frame_before_input = 0;
+      const bool play_before_input = operator_state.play;
       {
         std::lock_guard<std::mutex> lock(current_motion_mutex_);
         motion_before_input = current_motion_;
@@ -3444,10 +3588,26 @@ class G1Deploy {
 
       std::shared_ptr<const MotionSequence> motion_after_input;
       int frame_after_input = 0;
+      bool play_after_input = false;
       {
         std::lock_guard<std::mutex> lock(current_motion_mutex_);
         motion_after_input = current_motion_;
         frame_after_input = current_frame_;
+        play_after_input = operator_state.play;
+
+        const bool play_rising_edge = !play_before_input && play_after_input;
+        const bool switched_motion_while_playing =
+            motion_before_input && motion_after_input &&
+            motion_before_input != motion_after_input && play_after_input;
+        if ((play_rising_edge || switched_motion_while_playing) &&
+            IsReferencePlaybackMotion(motion_after_input) &&
+            motion_after_input->timesteps > 0) {
+          current_frame_ = 0;
+          frame_after_input = 0;
+          StartStandTransitionToMotionStart(motion_after_input);
+        } else if (!play_after_input && !HasActiveStandTransition()) {
+          ResetStandTransition();
+        }
       }
       if (motion_before_input && motion_after_input) {
         const bool planner_involved =
