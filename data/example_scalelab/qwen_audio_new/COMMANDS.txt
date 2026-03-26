@@ -1,0 +1,54 @@
+# 部署命令速记
+
+## 🎯 一句话部署（复制即用）
+
+```bash
+# 最简单 - 一键脚本
+cd ~/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio_new && ./deploy_qwen_audio_new.sh real
+
+# 或者标准方式
+cd ~/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy && ./deploy.sh real --motion-data reference/example_scalelab/qwen_audio_new --motion-audio-dir reference/example_scalelab/qwen_audio_new/audio_aligned_16k_en
+```
+
+## 📋 完整命令参考
+
+| 用途 | 命令 |
+|------|------|
+| **真机部署** (推荐) | `./deploy.sh real --motion-data reference/example_scalelab/qwen_audio_new --motion-audio-dir reference/example_scalelab/qwen_audio_new/audio_aligned_16k_en` |
+| **仿真测试** | `./deploy.sh sim --motion-data reference/example_scalelab/qwen_audio_new --motion-audio-dir reference/example_scalelab/qwen_audio_new/audio_aligned_16k_en` |
+| **快速脚本** | `cd reference/example_scalelab/qwen_audio_new && ./deploy_qwen_audio_new.sh real` |
+| **指定接口** | `./deploy.sh eth0 --motion-data reference/example_scalelab/qwen_audio_new --motion-audio-dir reference/example_scalelab/qwen_audio_new/audio_aligned_16k_en` |
+
+## 🎮 运行时快捷键
+
+```
+T → 播放   N → 下一个   P → 暂停   R → 重新启动   Q → 退出
+```
+
+## 🔍 快速检查
+
+```bash
+# 检查转化文件
+ls ~/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio_new/audio_test/
+
+# 检查音频文件
+ls ~/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio_new/audio_aligned_16k_en/
+
+# 测试网络
+ping 192.168.123.161
+```
+
+## 💾 文件位置
+
+```
+部署位置:
+/home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio_new/
+
+关键文件:
+- audio_test/           : 转化后的动作
+- audio_aligned_16k_en/ : 音频文件
+- deploy.sh             : 主部署脚本
+```
+
+---
+更多详情见 [README.md](README.md) 或 [QUICK_START.md](QUICK_START.md)

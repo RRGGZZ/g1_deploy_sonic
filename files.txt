@@ -2,6 +2,7 @@ gear_sonic_deploy/deploy.sh
 gear_sonic_deploy/visualize_motion.py
 gear_sonic_deploy/reference/convert_motions.py
 gear_sonic_deploy/reference/align_audio_to_motion.py
+gear_sonic_deploy/reference/package_single_motion_with_audio.py
 gear_sonic_deploy/src/audio_thread/CMakeLists.txt
 gear_sonic_deploy/src/audio_thread/audio_thread.hpp
 gear_sonic_deploy/src/audio_thread/audio_thread.cpp

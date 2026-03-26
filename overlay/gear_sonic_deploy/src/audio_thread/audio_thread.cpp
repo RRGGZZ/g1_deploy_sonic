@@ -25,7 +25,9 @@ constexpr double kTargetSpeechRms = 14000.0;
 constexpr double kMaxSpeechGain = 6.0;
 constexpr double kOutputPeakTarget = 0.98;
 constexpr auto kChunkLeadTime = std::chrono::milliseconds(40);
-constexpr auto kPlaybackDrainPadding = std::chrono::milliseconds(120);
+// Unitree speaker playback still truncates the tail slightly if PlayStop is
+// sent immediately after the final chunk drains, so keep an extra 1 s grace.
+constexpr auto kPlaybackDrainPadding = std::chrono::milliseconds(1120);
 
 std::string ZeroPadNumber(int value, int width) {
   std::ostringstream oss;
@@ -176,13 +178,32 @@ void AudioThread::loop(std::stop_token st) {
     }
 
     std::string active_motion_name;
+    bool allow_active_motion_audio_to_finish = false;
+    std::string pending_motion_name;
     {
       std::lock_guard<std::mutex> playback_lock(playback_mutex_);
       active_motion_name = active_motion_name_;
+      allow_active_motion_audio_to_finish = allow_active_motion_audio_to_finish_;
+      pending_motion_name = pending_motion_name_;
+    }
+
+    const bool motion_finished_naturally =
+        !active_motion_name.empty() &&
+        command_last_.motion_playing &&
+        !command.motion_playing &&
+        command.current_frame == 0 &&
+        command_last_.motion_name == active_motion_name;
+    if (motion_finished_naturally) {
+      std::lock_guard<std::mutex> playback_lock(playback_mutex_);
+      if (active_motion_name_ == active_motion_name) {
+        allow_active_motion_audio_to_finish_ = true;
+        allow_active_motion_audio_to_finish = true;
+      }
     }
 
     const bool should_stop_motion_audio =
         !active_motion_name.empty() &&
+        !allow_active_motion_audio_to_finish &&
         (!command.motion_audio_enabled || command.motion_name.empty() ||
          command.motion_name != active_motion_name);
 
@@ -194,11 +215,46 @@ void AudioThread::loop(std::stop_token st) {
          command_last_.motion_name != command.motion_name ||
          command_last_.current_frame != 0);
 
+    const bool should_queue_motion_audio =
+        should_start_motion_audio &&
+        !active_motion_name.empty() &&
+        allow_active_motion_audio_to_finish &&
+        command.motion_name != active_motion_name;
+
+    if (!pending_motion_name.empty() &&
+        (!command.motion_audio_enabled || command.motion_name != pending_motion_name)) {
+      std::lock_guard<std::mutex> playback_lock(playback_mutex_);
+      if (pending_motion_name_ == pending_motion_name) {
+        pending_motion_name_.clear();
+        pending_motion_name.clear();
+      }
+    }
+
+    const bool should_start_queued_motion_audio =
+        motion_audio_available_ &&
+        active_motion_name.empty() &&
+        !pending_motion_name.empty() &&
+        command.motion_audio_enabled &&
+        command.motion_name == pending_motion_name;
+
     if (should_stop_motion_audio) {
       StopMotionPlayback();
     }
-    if (should_start_motion_audio) {
+    if (should_queue_motion_audio) {
+      std::lock_guard<std::mutex> playback_lock(playback_mutex_);
+      pending_motion_name_ = command.motion_name;
+    } else if (should_start_motion_audio) {
       StartMotionPlayback(command.motion_name);
+    } else if (should_start_queued_motion_audio) {
+      std::string queued_motion_name;
+      {
+        std::lock_guard<std::mutex> playback_lock(playback_mutex_);
+        queued_motion_name = pending_motion_name_;
+        pending_motion_name_.clear();
+      }
+      if (!queued_motion_name.empty()) {
+        StartMotionPlayback(queued_motion_name);
+      }
     }
 
     command_last_ = command;
@@ -223,6 +279,7 @@ void AudioThread::StartMotionPlayback(const std::string& motion_name) {
   {
     std::lock_guard<std::mutex> playback_lock(playback_mutex_);
     active_motion_name_ = motion_name;
+    allow_active_motion_audio_to_finish_ = false;
   }
 
   std::cout << "Starting motion audio for " << motion_name << ": " << *audio_path
@@ -245,6 +302,8 @@ void AudioThread::StopMotionPlayback() {
 
   std::lock_guard<std::mutex> playback_lock(playback_mutex_);
   active_motion_name_.clear();
+  allow_active_motion_audio_to_finish_ = false;
+  pending_motion_name_.clear();
 }
 
 void AudioThread::PlaybackMotionAudio(std::stop_token st,
@@ -255,6 +314,8 @@ void AudioThread::PlaybackMotionAudio(std::stop_token st,
     std::lock_guard<std::mutex> playback_lock(playback_mutex_);
     if (active_motion_name_ == motion_name) {
       active_motion_name_.clear();
+      allow_active_motion_audio_to_finish_ = false;
+      pending_motion_name_.clear();
     }
     return;
   }
@@ -305,6 +366,7 @@ void AudioThread::PlaybackMotionAudio(std::stop_token st,
   std::lock_guard<std::mutex> playback_lock(playback_mutex_);
   if (active_motion_name_ == motion_name) {
     active_motion_name_.clear();
+    allow_active_motion_audio_to_finish_ = false;
   }
 }
 

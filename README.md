@@ -6,13 +6,16 @@ It includes:
 - the modified deployment source files
 - `gear_sonic_deploy/visualize_motion.py`
 - the `example_scalelab` demo dataset
+- the `qwen_audio_new` single-motion demo package
 - helper scripts so a fresh machine can install and run with one command
 
 ## What This Plugin Adds
 
 - ScaleLab / GMR `.pkl` to SONIC motion conversion
+- single `.pkl + .wav` packaging into deployable motion/audio folders
 - corrected joint remapping for G1 arm motion
 - offline audio-to-motion alignment
+- smoother motion switching / rewind / return-to-frame-0 interpolation for real robot deployment
 - robot speaker playback that follows motion switching more robustly
 - standalone G1 speaker debug player
 - built-in visualization script with no hard dependency on `lxml`
@@ -58,7 +61,13 @@ bash plugins/g1_deploy_sonic/quickstart.sh . visualize
 Convert the shipped raw `.pkl` motions:
 
 ```bash
-bash plugins/g1_deploy_sonic/quickstart.sh . convert
+  bash plugins/g1_deploy_sonic/quickstart.sh . convert
+```
+
+Package the shipped `qwen_audio_new` single motion and audio:
+
+```bash
+bash plugins/g1_deploy_sonic/quickstart.sh . package-new
 ```
 
 Align the shipped audio to motion duration:
@@ -79,6 +88,12 @@ Deploy on the real robot:
 bash plugins/g1_deploy_sonic/quickstart.sh . deploy real
 ```
 
+Deploy the shipped `qwen_audio_new` package on the real robot with full audio:
+
+```bash
+bash plugins/g1_deploy_sonic/quickstart.sh . deploy-new real
+```
+
 If you already know the robot NIC, you can pass it directly:
 
 ```bash
@@ -97,6 +112,13 @@ python reference/convert_motions.py \
   reference/example_scalelab/qwen_audio/g1_pkl_en \
   reference/example_scalelab/qwen_audio/g1_ref_en \
   --target-fps 50
+```
+
+Package a single `.pkl + .wav` pair:
+
+```bash
+python reference/package_single_motion_with_audio.py \
+  reference/example_scalelab/qwen_audio_new
 ```
 
 Visualize a motion:
@@ -139,6 +161,15 @@ Deploy manually:
 ./deploy.sh \
   --motion-data reference/example_scalelab/qwen_audio/g1_ref_en \
   --motion-audio reference/example_scalelab/qwen_audio/audio_aligned_16k_en \
+  real
+```
+
+Deploy the new single packaged motion with full audio:
+
+```bash
+./deploy.sh \
+  --motion-data reference/example_scalelab/qwen_audio_new/deploy_package/motions \
+  --motion-audio reference/example_scalelab/qwen_audio_new/deploy_package/audio_full_16k \
   real
 ```
 

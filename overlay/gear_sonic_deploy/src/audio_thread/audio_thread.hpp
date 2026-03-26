@@ -66,6 +66,8 @@ class AudioThread {
   std::filesystem::path motion_audio_dir_;
   bool motion_audio_available_ = false;
   std::string active_motion_name_;
+  bool allow_active_motion_audio_to_finish_ = false;
+  std::string pending_motion_name_;
 
   std::unordered_map<std::string, CachedAudioClip> audio_cache_;
   std::unordered_set<std::string> missing_audio_logged_;

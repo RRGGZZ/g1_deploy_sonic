@@ -24,15 +24,19 @@ Commands:
   install
   build
   convert
+  package-new
   align
   visualize [motion_dir]
   deploy [real|sim|<interface>|<ip>]
+  deploy-new [real|sim|<interface>|<ip>]
 
 Examples:
   bash plugins/g1_deploy_sonic/quickstart.sh . install
   bash plugins/g1_deploy_sonic/quickstart.sh . visualize
   bash plugins/g1_deploy_sonic/quickstart.sh . build
   bash plugins/g1_deploy_sonic/quickstart.sh . deploy real
+  bash plugins/g1_deploy_sonic/quickstart.sh . package-new
+  bash plugins/g1_deploy_sonic/quickstart.sh . deploy-new real
 EOF
 }
 
@@ -76,6 +80,15 @@ case "$COMMAND" in
         --target-fps 50
     )
     ;;
+  package-new)
+    ensure_sonic_root
+    run_install
+    (
+      cd "$SONIC_ROOT/gear_sonic_deploy"
+      python reference/package_single_motion_with_audio.py \
+        reference/example_scalelab/qwen_audio_new
+    )
+    ;;
   align)
     ensure_sonic_root
     run_install
@@ -109,6 +122,24 @@ case "$COMMAND" in
       ./deploy.sh \
         --motion-data reference/example_scalelab/qwen_audio/g1_ref_en \
         --motion-audio reference/example_scalelab/qwen_audio/audio_aligned_16k_en \
+        "$TARGET"
+    )
+    ;;
+  deploy-new)
+    ensure_sonic_root
+    run_install
+    (
+      cd "$SONIC_ROOT/gear_sonic_deploy"
+      python reference/package_single_motion_with_audio.py \
+        reference/example_scalelab/qwen_audio_new
+    )
+    build_release
+    TARGET="${1:-real}"
+    (
+      cd "$SONIC_ROOT/gear_sonic_deploy"
+      ./deploy.sh \
+        --motion-data reference/example_scalelab/qwen_audio_new/deploy_package/motions \
+        --motion-audio reference/example_scalelab/qwen_audio_new/deploy_package/audio_full_16k \
         "$TARGET"
     )
     ;;
