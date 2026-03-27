@@ -1,0 +1,65 @@
+Motion Information: case_test11_waist
+==================================================
+
+_source_format:
+  Value: scalelab_gmr
+
+_source_fps:
+  Value: 49.921875
+
+_target_fps:
+  Value: 50.0
+
+_root_rotation_input_order:
+  Value: xyzw
+
+_output_body_quaternion_order:
+  Value: wxyz
+
+_source_joint_order:
+  Value: mujoco_qpos
+
+_output_joint_order:
+  Value: isaaclab
+
+joint_pos:
+  Shape: (212, 29)
+  Dtype: float64
+  Range: [-0.984315, 1.257412]
+  Sample: [-0.05       -0.05       -0.04419436  0.          0.        ]
+
+joint_vel:
+  Shape: (212, 29)
+  Dtype: float64
+  Range: [-2.090717, 2.466057]
+  Sample: [0.         0.         0.11457703 0.         0.        ]
+
+body_pos_w:
+  Shape: (212, 1, 3)
+  Dtype: float64
+  Range: [0.000000, 0.800000]
+  Sample: [0.         0.         0.80000001 0.         0.        ]
+
+body_quat_w:
+  Shape: (212, 1, 4)
+  Dtype: float64
+  Range: [-0.707107, 0.707107]
+  Sample: [ 0.70710678  0.          0.         -0.70710678  0.70710678]
+
+body_lin_vel_w:
+  Shape: (212, 1, 3)
+  Dtype: float64
+  Range: [0.000000, 0.000000]
+  Sample: [0. 0. 0. 0. 0.]
+
+body_ang_vel_w:
+  Shape: (212, 1, 3)
+  Dtype: float64
+  Range: [0.000000, 0.000000]
+  Sample: [0. 0. 0. 0. 0.]
+
+_body_indexes:
+  Value: [0]
+
+time_step_total:
+  Value: 212

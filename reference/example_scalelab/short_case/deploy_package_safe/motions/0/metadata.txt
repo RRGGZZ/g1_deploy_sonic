@@ -1,0 +1,15 @@
+Metadata for: 0
+==============================
+
+Body part indexes:
+[0]
+
+Total timesteps: 341
+
+Data arrays summary:
+  joint_pos: (341, 29) (float64)
+  joint_vel: (341, 29) (float64)
+  body_pos_w: (341, 1, 3) (float64)
+  body_quat_w: (341, 1, 4) (float64)
+  body_lin_vel_w: (341, 1, 3) (float64)
+  body_ang_vel_w: (341, 1, 3) (float64)

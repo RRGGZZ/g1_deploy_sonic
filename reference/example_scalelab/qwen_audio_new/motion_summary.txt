@@ -1,0 +1,16 @@
+G1 Motion Capture Data Summary
+========================================
+
+Total motion sequences: 1
+
+Detailed motion list:
+  audio_test:
+    Output dir: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio_new/audio_test
+    Timesteps: 3012
+    Joints: 29
+    Body parts: 1
+    Source format: scalelab_gmr
+    Source FPS: 49.99446902654867
+    Target FPS: 50.0
+    Body indexes: [0]
+

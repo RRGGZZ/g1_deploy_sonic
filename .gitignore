@@ -1,2 +1,7 @@
-__pycache__/
-*.pyc
+# Ignore GitHub workflows and CI/CD files
+.github/
+
+build/
+target/
+logs/
+*.trt

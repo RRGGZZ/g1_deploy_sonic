@@ -1,0 +1,65 @@
+Motion Information: audio_en_11-15_test
+==================================================
+
+_source_format:
+  Value: scalelab_gmr
+
+_source_fps:
+  Value: 50.00954198473283
+
+_target_fps:
+  Value: 50.0
+
+_root_rotation_input_order:
+  Value: xyzw
+
+_output_body_quaternion_order:
+  Value: wxyz
+
+_source_joint_order:
+  Value: mujoco_qpos
+
+_output_joint_order:
+  Value: isaaclab
+
+joint_pos:
+  Shape: (1745, 29)
+  Dtype: float64
+  Range: [-0.982160, 1.263773]
+  Sample: [-0.05       -0.05       -0.05257224  0.          0.        ]
+
+joint_vel:
+  Shape: (1745, 29)
+  Dtype: float64
+  Range: [-3.180686, 3.353075]
+  Sample: [ 0.         0.        -0.0152361  0.         0.       ]
+
+body_pos_w:
+  Shape: (1745, 1, 3)
+  Dtype: float64
+  Range: [0.000000, 0.800000]
+  Sample: [0.         0.         0.80000001 0.         0.        ]
+
+body_quat_w:
+  Shape: (1745, 1, 4)
+  Dtype: float64
+  Range: [-0.707107, 0.707107]
+  Sample: [ 0.70710678  0.          0.         -0.70710678  0.70710678]
+
+body_lin_vel_w:
+  Shape: (1745, 1, 3)
+  Dtype: float64
+  Range: [0.000000, 0.000000]
+  Sample: [0. 0. 0. 0. 0.]
+
+body_ang_vel_w:
+  Shape: (1745, 1, 3)
+  Dtype: float64
+  Range: [0.000000, 0.000000]
+  Sample: [0. 0. 0. 0. 0.]
+
+_body_indexes:
+  Value: [0]
+
+time_step_total:
+  Value: 1745

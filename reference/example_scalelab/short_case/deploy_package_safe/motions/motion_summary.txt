@@ -1,0 +1,26 @@
+G1 Motion Capture Data Summary
+========================================
+
+Total motion sequences: 2
+
+Detailed motion list:
+  0:
+    Output dir: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/short_case/deploy_package_safe/motions/0
+    Timesteps: 341
+    Joints: 29
+    Body parts: 1
+    Source format: scalelab_gmr
+    Source FPS: 120.0
+    Target FPS: 50.0
+    Body indexes: [0]
+
+  2:
+    Output dir: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/short_case/deploy_package_safe/motions/2
+    Timesteps: 198
+    Joints: 29
+    Body parts: 1
+    Source format: scalelab_gmr
+    Source FPS: 120.0
+    Target FPS: 50.0
+    Body indexes: [0]
+

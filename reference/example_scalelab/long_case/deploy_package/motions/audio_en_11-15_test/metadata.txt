@@ -1,0 +1,15 @@
+Metadata for: audio_en_11-15_test
+==============================
+
+Body part indexes:
+[0]
+
+Total timesteps: 1745
+
+Data arrays summary:
+  joint_pos: (1745, 29) (float64)
+  joint_vel: (1745, 29) (float64)
+  body_pos_w: (1745, 1, 3) (float64)
+  body_quat_w: (1745, 1, 4) (float64)
+  body_lin_vel_w: (1745, 1, 3) (float64)
+  body_ang_vel_w: (1745, 1, 3) (float64)

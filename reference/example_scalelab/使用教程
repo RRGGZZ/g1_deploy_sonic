@@ -1,0 +1,14 @@
+本仓库可以直接 git clone 使用，不需要额外 override。
+
+示例命令：
+./deploy.sh real --motion-data reference/example_scalelab/long_case/deploy_package/motions --motion-audio-dir reference/example_scalelab/long_case/deploy_package/audio_full_16k
+
+另一个数据集示例：
+./deploy.sh real --motion-data reference/example_scalelab/qwen_audio/g1_ref_en --motion-audio-dir reference/example_scalelab/qwen_audio/audio_en
+
+按键说明：
+n 是切换下一个动作
+t 是开始播放
+o 是紧急停止
+
+开始时先按 n 切换到想要的动作，再按 t 开始。

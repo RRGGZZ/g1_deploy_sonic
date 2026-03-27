@@ -1,0 +1,66 @@
+Motion Audio Dataset Deploy Package
+==================================
+
+input_dir: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/long_case
+output_dir: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/long_case/deploy_package
+motions: 6
+
+audio_cn_01-05_test:
+  language: cn
+  range: 01-05
+  source_pickle: audio_cn_01-05_test.pkl
+  source_wav: 01-05_cn.wav
+  motion_seconds_deploy: 45.980
+  audio_full_seconds: 46.951
+  audio_aligned_seconds: 45.980
+
+audio_cn_06-10_test:
+  language: cn
+  range: 06-10
+  source_pickle: audio_cn_06-10_test.pkl
+  source_wav: 06-10_cn.wav
+  motion_seconds_deploy: 42.900
+  audio_full_seconds: 43.503
+  audio_aligned_seconds: 42.900
+
+audio_cn_11-15_test:
+  language: cn
+  range: 11-15
+  source_pickle: audio_cn_11-15_test.pkl
+  source_wav: 11-15_cn.wav
+  motion_seconds_deploy: 32.900
+  audio_full_seconds: 33.865
+  audio_aligned_seconds: 32.900
+
+audio_en_1-5_test:
+  language: en
+  range: 01-05
+  source_pickle: audio_en_1-5_test.pkl
+  source_wav: 01-05_en.wav
+  motion_seconds_deploy: 52.780
+  audio_full_seconds: 56.175
+  audio_aligned_seconds: 52.780
+
+audio_en_11-15_test:
+  language: en
+  range: 11-15
+  source_pickle: audio_en_11-15_test.pkl
+  source_wav: 11-15_en.wav
+  motion_seconds_deploy: 34.900
+  audio_full_seconds: 35.479
+  audio_aligned_seconds: 34.900
+
+audio_en_6-10_test:
+  language: en
+  range: 06-10
+  source_pickle: audio_en_6-10_test.pkl
+  source_wav: 06-10_en.wav
+  motion_seconds_deploy: 48.900
+  audio_full_seconds: 49.789
+  audio_aligned_seconds: 48.900
+
+Suggested deploy command (full audio):
+  ./deploy.sh --motion-data reference/example_scalelab/long_case/deploy_package/motions --motion-audio reference/example_scalelab/long_case/deploy_package/audio_full_16k real
+
+Suggested deploy command (aligned audio):
+  ./deploy.sh --motion-data reference/example_scalelab/long_case/deploy_package/motions --motion-audio reference/example_scalelab/long_case/deploy_package/audio_aligned_16k real

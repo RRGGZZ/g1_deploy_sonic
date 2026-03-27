@@ -1,0 +1,27 @@
+Single Motion Deploy Package
+===========================
+
+input_dir: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio_new
+motion_name: audio_test
+motion_pickle: audio_test.pkl
+audio_wav: audio.wav
+motion_frames_source: 3012
+motion_fps_source: 49.994469
+motion_frames_deploy: 3012
+motion_fps_deploy: 50.0
+motion_seconds_deploy: 60.240
+audio_seconds_source: 136.099
+audio_output_sr: 16000
+audio_full_gain: 3.393
+audio_aligned_gain: 3.411
+
+Generated paths:
+  motions: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio_new/deploy_package/motions
+  audio_full_16k: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio_new/deploy_package/audio_full_16k
+  audio_aligned_16k: /home/r/Downloads/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example_scalelab/qwen_audio_new/deploy_package/audio_aligned_16k
+
+Suggested deploy command (full audio):
+  ./deploy.sh --motion-data reference/example_scalelab/qwen_audio_new/deploy_package/motions --motion-audio reference/example_scalelab/qwen_audio_new/deploy_package/audio_full_16k real
+
+Suggested deploy command (aligned audio):
+  ./deploy.sh --motion-data reference/example_scalelab/qwen_audio_new/deploy_package/motions --motion-audio reference/example_scalelab/qwen_audio_new/deploy_package/audio_aligned_16k real
